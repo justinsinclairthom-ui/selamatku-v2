@@ -68,16 +68,34 @@ JS_CONTENT    = _read("app.js")
 # the whole height chain collapses -> the Leaflet map renders at 0px (invisible).
 FULLSCREEN_CSS = """
     html, body { height: 100%; margin: 0; background: var(--clr-bg, #f4f6fb); }
-    .gradio-container { max-width: 100% !important; width: 100% !important; }
-    #component-0 { width: 100%; margin: 0; padding: 0; }
+
+    /* Neutralise Gradio's page chrome so nothing offsets our full-screen app.
+       Gradio 6 (Svelte frontend) may wrap components in several containers with
+       its own padding/margins/centering — we blank them all. */
+    .gradio-container, .gr-container, [class*="gradio"], main, #main {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    /* Hide Gradio's title bar / header if present. */
+    .main-header, [class*="header"], .top-header, .gradio-title {
+        display: none !important;
+    }
+
+    /* Pin the app to the viewport itself, bypassing any Gradio wrapper.
+       position:fixed + inset:0 guarantees exact centering & full size no matter
+       what container Gradio adds around the component. */
     .sk-pwa {
-        width: 100vw;
-        height: 100vh;
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
         overflow: hidden;
         border: none;
         display: flex;
         flex-direction: column;
-        position: relative;
+        z-index: 9999;
     }
     /* Map tab needs an explicit height since it is not scrollable like others */
     .sk-pwa #tab-map.active { height: 100%; overflow: hidden; }

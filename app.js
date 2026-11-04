@@ -412,26 +412,51 @@ function formatDate(ts) {
 
 // ── MAP INIT ───────────────────────────────────────────────────
 function initMap() {
-  state.map = L.map('map').setView([-6.2, 106.8], 13);
+  state.map = L.map('map', { zoomControl: false }).setView([-6.2, 106.8], 13);
+  L.control.zoom({ position: 'bottomright' }).addTo(state.map);
 
-  // Primary: CARTO dark tiles (no API key, no regional blocking)
-  const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    maxZoom: 19,
-    subdomains: 'abcd'
-  }).addTo(state.map);
+  // Solid backdrop so that while tiles load (or if a provider is blocked in a
+  // given network / datacenter) the map never shows a blank or broken/error
+  // image. Set on the Leaflet container element directly.
+  const mapEl = document.getElementById('map');
+  if (mapEl) mapEl.style.background = '#0b1120';
 
-  // Fallback: if CARTO fails, try standard OSM tiles
-  cartoLayer.on('tileerror', function() {
-    if (!state._osmFallbackTried) {
-      state._osmFallbackTried = true;
-      state.map.removeLayer(cartoLayer);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19
-      }).addTo(state.map);
-    }
-  });
+  // Tile sources tried in order until one works. All are keyless. CARTO has
+  // been observed serving error/placeholder tiles from some cloud/datacenter
+  // egress IPs, so we verify the first real tile loads before committing to a
+  // source and fall through to the next on failure.
+  const TILE_SOURCES = [
+    { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' },
+    { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+      attr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd' },
+    { url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+      attr: '&copy; OpenStreetMap contributors, CC-BY-SA · &copy; <a href="https://openstreetmap.fr">OSM France</a>' },
+  ];
+
+  let currentLayer = null;
+  let errorsOnCurrent = 0;
+
+  function loadSource(idx) {
+    if (idx >= TILE_SOURCES.length) return;   // all failed; backdrop stays
+    const src = TILE_SOURCES[idx];
+    if (currentLayer) { state.map.removeLayer(currentLayer); currentLayer = null; }
+    errorsOnCurrent = 0;
+    currentLayer = L.tileLayer(src.url, {
+      attribution: src.attr,
+      maxZoom: 19,
+      crossOrigin: true,
+      ...(src.subdomains ? { subdomains: src.subdomains } : {})
+    }).addTo(state.map);
+
+    currentLayer.on('tileerror', function () {
+      // Tolerate a few sporadic tile errors before switching sources.
+      if (++errorsOnCurrent >= 6) loadSource(idx + 1);
+    });
+    currentLayer.on('load', function () { errorsOnCurrent = 0; });
+  }
+  loadSource(0);
 
   // Always start real-time GPS watch
   // If saved position exists, show it immediately while GPS loads
