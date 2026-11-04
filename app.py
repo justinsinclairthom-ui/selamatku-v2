@@ -58,31 +58,67 @@ CSS_CONTENT   = _read("style.css")
 JS_CONTENT    = _read("app.js")
 
 
+# Strip Gradio's own page chrome so our full-screen app fills the viewport.
+# Appended to the inline <style> by build_page_html() so it is guaranteed to load.
+#
+# .sk-pwa must be a FLEX COLUMN root with full viewport height: style.css lays
+# out the app as body(flex column) > #main-content(flex:1) > .tab-panel(100%)
+# > #map(100%). In the standalone PWA that root is <body>; here it is .sk-pwa.
+# If .sk-pwa were display:block, #main-content{flex:1} has no flex parent and
+# the whole height chain collapses -> the Leaflet map renders at 0px (invisible).
+FULLSCREEN_CSS = """
+    html, body { height: 100%; margin: 0; background: var(--clr-bg, #f4f6fb); }
+    .gradio-container { max-width: 100% !important; width: 100% !important; }
+    #component-0 { width: 100%; margin: 0; padding: 0; }
+    .sk-pwa {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        border: none;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+    }
+    /* Map tab needs an explicit height since it is not scrollable like others */
+    .sk-pwa #tab-map.active { height: 100%; overflow: hidden; }
+"""
+
+
 def build_page_html() -> str:
-    """Return the index.html markup with CSS inlined and external script tags
-    removed. JS is NOT inlined here — it goes through gr.HTML(js_on_load=)."""
+    """Return ONLY the fragment that belongs inside gr.HTML.
+
+    CRITICAL: gr.HTML injects its value via innerHTML into Gradio's own page.
+    If we hand it a FULL document (<!DOCTYPE><html><head>…</head><body>…), the
+    browser sees nested <html>/<head> tags and DROPS the inner <head> — so the
+    inline <style> never applies (UI looks broken) and structure collapses
+    (map disappears). We must return just:  <style>…css…</style> + body markup.
+    """
     html = HTML_TEMPLATE
 
-    # style.css?v=5  ->  <style>…</style>  (inline CSS works via innerHTML)
-    html = html.replace(
-        '<link rel="stylesheet" href="style.css?v=5" />',
-        "<style>\n" + CSS_CONTENT + "\n</style>",
-    )
-    html = html.replace(
-        '<link rel="stylesheet" href="style.css" />',
-        "<style>\n" + CSS_CONTENT + "\n</style>",
-    )
+    # Inline style.css into a <style> block where the <link> was.
+    for tag in ('<link rel="stylesheet" href="style.css?v=5" />',
+                '<link rel="stylesheet" href="style.css" />'):
+        html = html.replace(tag, "<style>\n" + CSS_CONTENT + "\n</style>")
 
-    # Leaflet CSS stays (external <link> is fine; not a script).
-
-    # Remove <script src="..."> tags — scripts in gr.HTML body are not executed.
-    # Leaflet JS is provided via head=; app.js via js_on_load=.
+    # Remove external <script src> tags — not executed in gr.HTML body.
+    # Leaflet JS comes via head=; app.js via js_on_load=.
     html = re.sub(r'<script[^>]*src="[^"]*"\s*></script>', "", html)
 
-    # Hide the manifest link (file not served on ModelScope; avoids a 404).
+    # Hide the manifest link (not served on ModelScope; avoids a 404).
     html = re.sub(r'<link[^>]*rel="manifest"[^>]*/?>', "", html)
 
-    return html
+    # Extract the inline <style> block(s) so we can place them at the top of the
+    # fragment (they currently sit where the <head> used to be), and add our
+    # Gradio fullscreen overrides so they are guaranteed to load.
+    styles = re.findall(r"<style>[\s\S]*?</style>", html)
+    css_block = "\n".join(styles) if styles else ""
+    css_block += "\n<style>\n" + FULLSCREEN_CSS + "\n</style>"
+
+    # Keep only the contents between <body ...> and </body>.
+    m = re.search(r"<body[^>]*>([\s\S]*?)</body>", html)
+    body_inner = m.group(1) if m else html
+
+    return css_block + "\n" + body_inner.strip()
 
 
 PAGE_HTML = build_page_html() if HTML_TEMPLATE else (
@@ -128,14 +164,6 @@ HEAD_HTML = (
     '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />'
     '<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>'
 )
-
-# Strip Gradio's own page chrome so our full-screen app fills the viewport.
-FULLSCREEN_CSS = """
-    .gradio-container { max-width: 100% !important; width: 100% !important; }
-    #component-0 { width: 100%; margin: 0; }
-    .sk-pwa { width: 100vw; height: 100vh; overflow: auto; border: none; display: block; }
-"""
-
 
 # ── Rule-based analysis (mirrors the frontend fallback logic) ──
 def rule_based_analysis(disaster_type: str, has_visual_context: bool, context: str) -> dict:
