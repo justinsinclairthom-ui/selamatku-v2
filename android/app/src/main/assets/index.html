@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a73e8" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="SelamatKu" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>SelamatKu — Deteksi & Evakuasi Bencana</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="mask-icon" href="icons/maskable-192.png" color="#1a73e8" />
+</head>
+<body>
+  <!-- ── HEADER ─────────────────────────────────────────── -->
+  <header id="app-header">
+    <div class="logo-row">
+      <span class="logo-icon">🛡️</span>
+      <h1>Selamat<span>Ku</span></h1>
+      <div class="header-actions">
+        <button id="btn-notification" class="icon-btn" title="Notifikasi aktif/nonaktif">🔕</button>
+        <button id="btn-sound" class="icon-btn" title="Suara aktif/nonaktif">🔊</button>
+      </div>
+    </div>
+    <p class="tagline">Deteksi bencana real-time · Jalur evakuasi cerdas</p>
+  </header>
+
+  <!-- ── STATUS BANNER ──────────────────────────────────── -->
+  <div id="status-banner" class="banner banner-safe">
+    <span id="status-icon">✅</span>
+    <div style="flex:1">
+      <strong id="status-title">Mengambil lokasi…</strong>
+      <p id="status-msg">Mohon izinkan akses lokasi Anda.</p>
+    </div>
+    <button id="btn-change-pos" class="icon-btn" title="Ubah posisi manual" style="font-size:16px;padding:4px 8px">✏️</button>
+  </div>
+
+  <!-- ── MAIN CONTENT ───────────────────────────────────── -->
+  <main id="main-content">
+
+    <!-- TAB: MAP -->
+    <section id="tab-map" class="tab-panel active">
+      <div id="map"></div>
+      <div class="map-overlay">
+        <button id="btn-recenter" class="fab" title="Pusatkan ke posisi saya">📍</button>
+        <button id="btn-rescan" class="fab" title="Pindai ulang zona risiko">🔄</button>
+        <button id="btn-scan-safety" class="fab fab-ai" title="AI Scan Lingkungan">📷</button>
+      </div>
+      <div id="zone-card" class="zone-card hidden">
+        <h3 id="zone-title">Zona Risiko</h3>
+        <p id="zone-desc"></p>
+        <button id="btn-evacuate" class="btn-primary btn-full">🚨 Mulai Evakuasi →</button>
+      </div>
+    </section>
+
+    <!-- TAB: DISASTERS -->
+    <section id="tab-disasters" class="tab-panel">
+      <div class="pull-indicator" id="pull-indicator-disasters">↻</div>
+      <div class="section-header">
+        <h2>Bencana Terdeteksi</h2>
+        <button id="btn-refresh-disaster" class="btn-secondary btn-sm">↻ Refresh</button>
+      </div>
+      <div id="disaster-list" class="card-list">
+        <div class="loading-state"><span class="spinner"></span>Memuat data gempa…</div>
+      </div>
+    </section>
+
+    <!-- TAB: SHELTER -->
+    <section id="tab-shelter" class="tab-panel">
+      <div class="pull-indicator" id="pull-indicator-shelter">↻</div>
+      <div class="section-header">
+        <h2>Tempat Berlindung Terdekat</h2>
+        <select id="shelter-type" class="filter-select">
+          <option value="all">Semua Jenis</option>
+          <option value="hospital">🏥 Rumah Sakit</option>
+          <option value="school">🏫 Sekolah / Gedung</option>
+          <option value="police">🚓 Pos Polisi</option>
+          <option value="fire">🚒 Damkar</option>
+          <option value="mosque">🕌 Masjid</option>
+          <option value="church">⛪ Gereja</option>
+          <option value="park">🌳 Taman / Ruang Terbuka</option>
+        </select>
+      </div>
+      <div id="shelter-list" class="card-list">
+        <div class="loading-state"><span class="spinner"></span>Mencari tempat aman…</div>
+      </div>
+    </section>
+
+    <!-- TAB: FAMILY -->
+    <section id="tab-family" class="tab-panel">
+      <div class="section-header">
+        <h2>👥 Keluarga</h2>
+      </div>
+      <div class="family-section">
+        <!-- Add member form -->
+        <div class="add-member-form">
+          <input type="text" id="member-name" placeholder="Nama (misal: Ibu)" maxlength="30" />
+          <input type="tel" id="member-phone" placeholder="Nomor HP (misal: 0812xxxx)" pattern="0[0-9]{8,12}" />
+          <button id="btn-add-member" class="btn-primary btn-full">+ Tambah Anggota</button>
+        </div>
+
+        <!-- Member list -->
+        <div id="family-list" class="card-list">
+          <div class="empty-state">
+            <span class="empty-icon">👨‍👩‍👧👦</span>
+            <p>Belum ada anggota keluarga.<br>Tambahkan di atas untuk berbagi posisi saat darurat.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: HISTORY -->
+    <section id="tab-history" class="tab-panel">
+      <div class="section-header">
+        <h2>📋 Riwayat & Favorit</h2>
+        <button id="btn-clear-history" class="btn-secondary btn-sm">🗑️ Bersihkan</button>
+      </div>
+
+      <!-- Favorites -->
+      <div class="history-section">
+        <h3 class="subsection-title">⭐ Favorit</h3>
+        <div id="favorites-list" class="card-list">
+          <div class="empty-state">
+            <span class="empty-icon">⭐</span>
+            <p>Belum ada favorit.<br>Tekan ⭐ di tab Tempat Aman untuk menyimpan.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="history-section">
+        <h3 class="subsection-title">🕐 Riwayat Evakuasi</h3>
+        <div id="history-list" class="card-list">
+          <div class="empty-state">
+            <span class="empty-icon">🕐</span>
+            <p>Belum ada riwayat evakuasi.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: ABOUT -->
+    <section id="tab-about" class="tab-panel">
+      <div class="info-card">
+        <h2>🛡️ SelamatKu</h2>
+        <p>Aplikasi pendeteksi bencana berbasis lokasi yang membantu Anda:</p>
+        <ul class="feature-list">
+          <li><strong>Deteksi gempa terkini</strong> dari BMKG (data real-time)</li>
+          <li><strong>Zona risiko tsunami</strong> berdasarkan kedalaman & magnitudo</li>
+          <li><strong>Jalur evakuasi optimal</strong> menggunakan OSRM routing engine</li>
+          <li><strong>Tempat berlindung terdekat</strong> dari OpenStreetMap (Overpass API)</li>
+          <li><strong>Mode offline</strong> — data terakhir tetap tersedia tanpa internet</li>
+          <li><strong>Notifikasi gempa</strong> — peringatan langsung saat gempa besar</li>
+          <li><strong>Family sharing</strong> — bagikan posisi ke keluarga via SMS/WA</li>
+          <li><strong>Riwayat & favorit</strong> — simpan tempat aman dan lacak evakuasi</li>
+        </ul>
+        <hr />
+        <h3>⚠️ Disclaimer</h3>
+        <p class="disclaimer">Aplikasi ini bersifat <em>informasional</em>. Selalu ikuti instruksi resmi BPBD dan otoritas setempat. Data mungkin tidak selalu akurat atau up-to-date.</p>
+        <h3>Tips Kesiapsiagaan</h3>
+        <ol class="tips-list">
+          <li>Simpan nomor darurat: <strong>112</strong> (nasional), <strong>BPBD kota</strong></li>
+          <li>Tentukan titik kumpul keluarga sebelum bencana terjadi</li>
+          <li>Siapkan tas siaga: air, makanan, obat, dokumen penting</li>
+          <li>Kenali jalur evakuasi di lingkungan Anda</li>
+          <li>Jauhi pantai jika ada peringatan tsunami</li>
+        </ol>
+        <hr />
+        <h3>🧪 Demo Mode</h3>
+        <p style="font-size:.82rem;color:var(--clr-text-2);margin-bottom:10px">Untuk presentasi / testing — simulasikan bencana tanpa menunggu kejadian asli:</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+          <button class="btn-secondary btn-full" onclick="demoQuake(5.2)">🌍 Simulasi Gempa M5.2 (Sedang)</button>
+          <button class="btn-secondary btn-full" style="border-color:#ef4444;color:#ef4444" onclick="demoQuake(6.8)">🚨 Simulasi Gempa M6.8 (Besar + Alarm)</button>
+          <button class="btn-secondary btn-full" style="border-color:#f59e0b;color:#f59e0b" onclick="demoTsunami()">🌊 Simulasi Peringatan Tsunami</button>
+          <button class="btn-primary btn-full" onclick="openSafetyScanner('gempa')">📷 Buka AI Scanner Sekarang</button>
+        </div>
+        <p style="font-size:.72rem;color:var(--clr-text-3)">⚠️ Demo mode hanya untuk presentasi. Tidak memengaruhi data aktual.</p>
+        <hr />
+        <h3>📱 Install Aplikasi</h3>
+        <p>Untuk pengalaman terbaik, install sebagai aplikasi:</p>
+        <ul class="feature-list">
+          <li><strong>Android/Chrome:</strong> Menu ⋮ → "Install app" / "Tambahkan ke layar utama"</li>
+          <li><strong>iOS/Safari:</strong> Tombol Share → "Tambahkan ke Layar Beranda"</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <!-- ── AI SAFETY SCANNER OVERLAY ───────────────────────── -->
+  <div id="scanner-overlay" class="scanner-overlay hidden">
+    <video id="scanner-video" autoplay playsinline muted></video>
+    <canvas id="scanner-canvas" style="display:none"></canvas>
+
+    <!-- Top bar -->
+    <div class="scanner-topbar">
+      <button id="btn-close-scanner" class="icon-btn scanner-close">✕</button>
+      <h3>📷 AI Safety Scanner</h3>
+      <span class="scanner-badge" id="scanner-status">Kamera aktif</span>
+    </div>
+
+    <!-- Disaster type selector -->
+    <div class="scanner-chips" id="scanner-disaster-types">
+      <button class="chip active" data-type="gempa">🌍 Gempa</button>
+      <button class="chip" data-type="tsunami">🌊 Tsunami</button>
+      <button class="chip" data-type="banjir">💧 Banjir</button>
+      <button class="chip" data-type="angin">🌬️ Angin Kencang</button>
+      <button class="chip" data-type="umum">❓ Umum</button>
+    </div>
+
+    <!-- Capture button -->
+    <div class="scanner-controls">
+      <p class="scanner-hint" id="scanner-hint">Tekan & tahan untuk rekam 3 detik, atau tap untuk foto sekali</p>
+      <button id="btn-capture" class="capture-btn">
+        <span class="capture-ring" id="capture-ring"></span>
+        <span class="capture-inner" id="capture-icon">🎬</span>
+      </button>
+      <p class="scanner-timer hidden" id="scanner-timer">⏺ Merekam… <span id="timer-count">3</span></p>
+    </div>
+
+    <!-- Loading state -->
+    <div id="scanner-loading" class="scanner-loading hidden">
+      <div class="spinner-lg"></div>
+      <p>Menganalisis lingkungan…</p>
+      <p class="loading-sub">AI sedang mencari tempat aman terdekat</p>
+    </div>
+
+    <!-- Results panel -->
+    <div id="scanner-results" class="scanner-results hidden">
+      <div class="results-header">
+        <span id="result-risk-badge" class="risk-badge">⚠️</span>
+        <h3 id="result-summary"></h3>
+        <button id="btn-rescan-ai" class="btn-secondary btn-sm">↻ Scan Lagi</button>
+      </div>
+      <div id="result-recs" class="rec-list"></div>
+      <div id="result-dangers" class="danger-zones hidden">
+        <h4>⚡ Zona Bahaya Terdeteksi:</h4>
+        <ul id="result-danger-list"></ul>
+      </div>
+      <p id="result-confidence" class="confidence-text"></p>
+      <button id="btn-close-results" class="btn-primary btn-full">Tutup & Kembali</button>
+    </div>
+  </div>
+
+  <!-- ── AUTO-SCAN CTA BANNER ─────────────────────────────── -->
+  <div id="scan-cta-banner" class="scan-cta-banner hidden">
+    <span>📷 Tekan untuk scan lingkungan & dapatkan rekomendasi berlindung</span>
+    <button id="btn-auto-scan" class="btn-primary btn-sm">Scan Sekarang</button>
+  </div>
+
+  <!-- ── BOTTOM NAVIGATION ──────────────────────────────── -->
+  <nav id="bottom-nav">
+    <button class="nav-item active" data-tab="map">
+      <span class="nav-icon">🗺️</span>
+      <span class="nav-label">Peta</span>
+    </button>
+    <button class="nav-item" data-tab="disasters">
+      <span class="nav-icon">⚠️</span>
+      <span class="nav-label">Bencana</span>
+    </button>
+    <button class="nav-item" data-tab="shelter">
+      <span class="nav-icon">🏥</span>
+      <span class="nav-label">Aman</span>
+    </button>
+    <button class="nav-item" data-tab="family">
+      <span class="nav-icon">👥</span>
+      <span class="nav-label">Keluarga</span>
+    </button>
+    <button class="nav-item" data-tab="history">
+      <span class="nav-icon">📋</span>
+      <span class="nav-label">Riwayat</span>
+    </button>
+    <button class="nav-item" data-tab="about">
+      <span class="nav-icon">ℹ️</span>
+      <span class="nav-label">Info</span>
+    </button>
+  </nav>
+
+  <!-- ── EVACUATION MODAL ───────────────────────────────── -->
+  <div id="evac-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🚨 Mode Evakuasi</h2>
+        <button id="btn-close-evac" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="evac-target-info" class="evac-target"></div>
+        <div id="route-summary" class="route-summary hidden">
+          <div class="route-stat">
+            <span class="stat-label">Jarak</span>
+            <span id="route-distance" class="stat-value">—</span>
+          </div>
+          <div class="route-stat">
+            <span class="stat-label">Estimasi Waktu</span>
+            <span id="route-time" class="stat-value">—</span>
+          </div>
+          <div class="route-stat">
+            <span class="stat-label">Jenis Perjalanan</span>
+            <span id="route-mode" class="stat-value">🚶 Jalan Kaki</span>
+          </div>
+        </div>
+        <div id="turn-by-turn" class="turn-by-turn"></div>
+        <div id="route-loading" class="loading-state hidden">Menghitung rute terbaik…</div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-start-nav" class="btn-primary btn-full" disabled>🧭 Mulai Navigasi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── NAVIGATION OVERLAY ─────────────────────────────── -->
+  <div id="nav-overlay" class="nav-overlay hidden">
+    <div class="nav-top-bar">
+      <button id="btn-end-nav" class="btn-danger btn-sm">✕ Akhiri</button>
+      <span id="nav-status" class="nav-status-text">Navigasi aktif</span>
+    </div>
+    <div id="nav-instruction" class="nav-instruction"></div>
+    <div class="nav-progress">
+      <div id="nav-progress-bar"></div>
+    </div>
+  </div>
+
+  <!-- ── EMERGENCY BAR ──────────────────────────────────── -->
+  <footer id="emergency-bar">
+    <a href="tel:112" class="emergency-btn">📞 112</a>
+    <a href="sms:?body=URGENT%20Saya%20terdampak%20bencana%20di%20lokasi%3A" class="emergency-btn">💬 SMS Darurat</a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js?v=3"></script>
+</body>
+</html>

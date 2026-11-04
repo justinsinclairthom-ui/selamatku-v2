@@ -1,0 +1,23 @@
+# Build outputs
+android/app/build/
+android/.gradle/
+*.apk
+
+# Local config
+android/local.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
